@@ -102,8 +102,7 @@ def Jogador1():
 def Jogador2():
     global Pontos2, timer, nomeJogador2, rounds
     rounds += 1
-    temporizador_thread = threading.Thread(target=temporizador2)
-    temporizador_thread.start()
+    threading.Thread(target=temporizador2).start()
     print('\n\n')
     print(f'Temporarizador de {timerTemp} segundos iniciado.')
     print(f'Vez do {nomeJogador2}. Digite o nome de um Pokémon valido, você atualmente tem {Pontos2} pontos')
