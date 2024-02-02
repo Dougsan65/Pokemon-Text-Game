@@ -6,52 +6,29 @@ dataAtual = datetime.datetime.now()
 conn = dbconnect.connectdb("PokemonGame")
 cur = conn.cursor()
 
-# cur.execute('''
-# CREATE TABLE IF NOT EXISTS jogadores (
-#     id serial PRIMARY KEY,
-#     nome varchar,
-#     idade integer,
-#     cidade varchar,
-#     expPoke boolean,
-#     dataCriacao date
-# );
 
-#             ''')
-
-# cur.execute('''
-#     CREATE TABLE IF NOT EXISTS pokemons (
-#     id serial PRIMARY KEY,
-#     nome_jogador varchar,
-#     nome_inicial varchar,
-#     pokemons_atuais varchar,
-#     geracao integer,
-#     dataCriacao date,
-# );
-            
-#             ''')
-
-# cur.execute('''
-# CREATE TABLE IF NOT EXISTS logsJoin (
-#     id serial PRIMARY KEY,
-#     nome varchar,
-#     dateJoin date
-# );
-
-#             ''')
-# conn.commit()
 
 pokemonsAtuais = []
-infoData = []
+infoData = [] #[0] Player Name
 InitialPoke_boolean = False
 PlayerName = ''
 InitialPoke = ''
+autoSaveon  = True
 
 
 
 def salvarGame():
-    cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais, geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais, geracaoEscolhida, dataAtual))
+    global pokemonsAtuais, infoData, InitialPoke, geracaoEscolhida, autoSaveon
+    cur.execute('SELECT nome_jogador FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+    nomePlayerExist = cur.fetchall()
+    if nomePlayerExist:
+        cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
+    else:
+        cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais, geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
     conn.commit()
-    print('Auto Save adicionado com sucesso!')
+    if autoSaveon:
+        print('Auto Save ativado!')
+        autoSaveon = False
     logger('autosave')
     threading.Timer(30, salvarGame).start()
 
@@ -68,16 +45,18 @@ def checkPlayerExists(playerName):
 
 def carregarDados():
     global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida
+    #Carrega os pokemons atuais
     cur.execute('SELECT pokemons_atuais FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
     pokemonsAtuais = cur.fetchall()
     
+    #Carrega a geração escolhida
     geracaoEscolhida = cur.execute('SELECT geracao FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
     geracaoEscolhida = cur.fetchall()
-    #inverte para int
     geracaoEscolhida = int(geracaoEscolhida[0][0])
+    
+    #Carrega Pokemon inicial
     PokemonInitialCheck = cur.execute('SELECT nome_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
     PokemonInitialCheck = cur.fetchall()
-    print(PokemonInitialCheck)
     if PokemonInitialCheck != None:
         InitialPoke_boolean = True
         InitialPoke = PokemonInitialCheck
@@ -97,7 +76,7 @@ def logger(where):
     global infoData
     cur.execute('INSERT INTO logsJoin (nome, dateJoin, locale) VALUES (%s, %s, %s)', (infoData[0], dataAtual, where))
     conn.commit()
-    print('Informações de log foram adicionadas com sucesso ao db!\n')
+    print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
 
 def criarSave():
     logger('Creating New character')
@@ -117,7 +96,7 @@ def criarSave():
         expPoke = False
     cur.execute('INSERT INTO jogadores (nome, idade, cidade, expPoke, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infosNewPlayer[0], infosNewPlayer[1], infosNewPlayer[2], expPoke, dataAtual))
     conn.commit()
-    logger()
+    logger('criando save')
     print('Informações adicionadas com sucesso ao db!')
     print('Direcionando para seleção de pokemon inicial...')
     escolherGeracaoInicial()
@@ -189,25 +168,39 @@ def menu():
         
     elif escolha == '4':
         logger('Exiting Game')
+        dbconnect.disconnectdb(conn)
         raise SystemExit
-    
+
     elif escolha == '5':
         logger('Saving Data to Database')
-        cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais,geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais, geracaoEscolhida, dataAtual))
+        cur.execute('SELECT nome_jogador FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+        nomePlayerExist = cur.fetchall()
+        if nomePlayerExist:
+            cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
+        else:
+            cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais, geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
         conn.commit()
-        salvarGame()
+
+
+        
+
+
+        
         
         print('Informações adicionadas com sucesso ao db!')
         menu()
+    
     elif escolha == '6':
         logger('Checking Info Player')
         print(f'Nome do jogador atual é: {PlayerName}')
         print(f'Seus pokemons atuais são: {pokemonsAtuais}')
+    
     elif escolha == '7':
         logger('Checking Players in Database')
         cur.execute('SELECT nome FROM jogadores')
         for i in cur.fetchall():
             print(f'Jogador: {i[0]}')
+    
     elif escolha == '8':
         logger('Changing Player Character')
         infoData.clear()
@@ -222,6 +215,7 @@ def menu():
             carregarDados()
         else:
             newGame()
+    
     elif escolha == '9':
         logger('Choosing First Pokemon')
         cur.execute('SELECT nome_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
@@ -240,6 +234,8 @@ if checkPlayerExists(infoData[0]):
     carregarDados()
 else:
     newGame()
-
+    
+    
+salvarGame()
 while True:
     menu()
