@@ -3,7 +3,7 @@ import requests
 import datetime
 import threading
 dataAtual = datetime.datetime.now()
-conn = dbconnect.connectdb("PokemonGame")
+conn = dbconnect.connectdb("PokemonMainDatabase")
 cur = conn.cursor()
 
 
@@ -13,27 +13,86 @@ infoData = [] #[0] Player Name
 InitialPoke_boolean = False
 PlayerName = ''
 InitialPoke = ''
-autoSaveon  = True
+autoSaveon  = False
 
 
+def checkInitialPoke(namePlayer):
+    cur.execute('SELECT pokemon_inicial FROM pokemons WHERE nome_jogador = %s', (namePlayer,))
+    checkifExist = cur.fetchall()
+    if checkifExist:
+        return True
+    else:
+        return False
+
+def changePlayer():
+    global infoData, PlayerName, InitialPoke, InitialPoke_boolean, pokemonsAtuais
+    infoData.clear()
+    PlayerName = ''
+    InitialPoke = ''
+    InitialPoke_boolean = False
+    pokemonsAtuais.clear()
+    infoData = input('Digite o nome do jogador: ')
+    infoData = [infoData]
+    PlayerName = infoData[0]
+    if checkPlayerExists(infoData[0]):
+        if checkInitialPoke(infoData[0]):
+            carregarDados()
+        else:
+            escolherGeracaoInicial()
+    else:
+        newGame()
+
+def checkAllPlayers():
+    logger('Checking Players in Database')
+    cur.execute('SELECT nome FROM players')
+    for i in cur.fetchall():
+        print(f'Jogador: {i[0]}')
+
+def salvarDados():
+        logger('Saving Data to Database')
+        cur.execute('SELECT nome FROM players WHERE nome = %s', (infoData[0],))
+        nomePlayerExist = cur.fetchall()
+        if nomePlayerExist:
+            if checkInitialPoke(infoData[0]):
+                print('Jogador encontrado')
+                cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0])) 
+            else:
+                print('Jogador encontrado, mas não tem pokemon inicial, criando novo save...')
+                # cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, geracaoEscolhida, dataAtual, pokemonsAtuais[0]))
+                cur.execute(f"""
+    INSERT INTO pokemons (jogador_id, nome_jogador, pokemon_inicial, geracao, datacriacao, pokemons_atuais)
+    SELECT id, nome, '{InitialPoke}', '{geracaoEscolhida}', '{dataAtual}', '{pokemonsAtuais[0]}'
+    FROM players
+    WHERE nome = '{infoData[0]}';
+""")
+
+        else:
+            print('Jogador não encontrado')
+            # cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
+            cur.execute(f"""
+    INSERT INTO pokemons (jogador_id, nome_jogador, geracao, datacriacao, pokemons_atuais)
+    SELECT id, nome, '{geracaoEscolhida}','{dataAtual}, '{pokemonsAtuais[0]}
+    FROM players
+    WHERE nome = '{infoData[0]}';
+""")      
+        conn.commit()
 
 def salvarGame():
-    global pokemonsAtuais, infoData, InitialPoke, geracaoEscolhida, autoSaveon
-    cur.execute('SELECT nome_jogador FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+    global autoSaveon
+    logger('Saving Data to Database')
+    cur.execute('SELECT nome FROM players WHERE nome = %s', (infoData[0],))
     nomePlayerExist = cur.fetchall()
     if nomePlayerExist:
-        cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
-    else:
-        cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais, geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
+        if checkInitialPoke(infoData[0]):
+            cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
+        else:
+            cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
     conn.commit()
-    if autoSaveon:
-        print('Auto Save ativado!')
-        autoSaveon = False
     logger('autosave')
     threading.Timer(30, salvarGame).start()
 
 def checkPlayerExists(playerName):
-    checkPlayer = cur.execute('SELECT * FROM jogadores WHERE nome = %s', (playerName,))
+    checkPlayer = cur.execute('SELECT * FROM players WHERE nome = %s', (playerName,))
     checkPlayer = cur.fetchall()
     logger('checkPlayerExists')
     if not checkPlayer:
@@ -55,7 +114,7 @@ def carregarDados():
     geracaoEscolhida = int(geracaoEscolhida[0][0])
     
     #Carrega Pokemon inicial
-    PokemonInitialCheck = cur.execute('SELECT nome_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+    PokemonInitialCheck = cur.execute('SELECT pokemon_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
     PokemonInitialCheck = cur.fetchall()
     if PokemonInitialCheck != None:
         InitialPoke_boolean = True
@@ -74,7 +133,13 @@ def newGame():
 
 def logger(where):
     global infoData
-    cur.execute('INSERT INTO logsJoin (nome, dateJoin, locale) VALUES (%s, %s, %s)', (infoData[0], dataAtual, where))
+    cur.execute(f"""
+    INSERT INTO logsjoin (player_id, nome, locale, date)
+    SELECT id, nome, '{where}','{dataAtual}'
+    FROM players
+    WHERE nome = '{infoData[0]}';
+""")
+    # cur.execute('INSERT INTO logsJoin (nome, dateJoin, locale) VALUES (%s, %s, %s)', (infoData[0], dataAtual, where))
     conn.commit()
     print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
 
@@ -94,7 +159,8 @@ def criarSave():
         expPoke = True
     else:
         expPoke = False
-    cur.execute('INSERT INTO jogadores (nome, idade, cidade, expPoke, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infosNewPlayer[0], infosNewPlayer[1], infosNewPlayer[2], expPoke, dataAtual))
+    cur.execute("INSERT INTO players (nome, idade, cidade, datacriacao, exppoke) VALUES (%s, %s, %s, %s, %s);", (infosNewPlayer[0], infosNewPlayer[1], infosNewPlayer[2], dataAtual, expPoke))
+    # cur.execute('INSERT INTO jogadores (nome, idade, cidade, expPoke, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infosNewPlayer[0], infosNewPlayer[1], infosNewPlayer[2], expPoke, dataAtual))
     conn.commit()
     logger('criando save')
     print('Informações adicionadas com sucesso ao db!')
@@ -146,7 +212,6 @@ def escolherGeracaoInicial():
 def menu():
     global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName
     print('Bem-vindo ao menu do jogo!')
-    print(InitialPoke)
     print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
     escolha = input('Escolha a opção: ')
     if escolha == '1':
@@ -165,6 +230,9 @@ def menu():
         verPokedex = input(f'Digite 1 para ver o numero de pokemons capturados, 2 para ver a pokedex: ')
         if verPokedex == '1':
             print(f'{len(pokemonsAtuais)}/{len(pokedex)} pokemons capturados')
+        elif verPokedex == '2':
+            for pokemon in pokedex:
+                print(pokemon['pokemon_species']['name'])
         
     elif escolha == '4':
         logger('Exiting Game')
@@ -172,53 +240,29 @@ def menu():
         raise SystemExit
 
     elif escolha == '5':
-        logger('Saving Data to Database')
-        cur.execute('SELECT nome_jogador FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
-        nomePlayerExist = cur.fetchall()
-        if nomePlayerExist:
-            cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
-        else:
-            cur.execute('INSERT INTO pokemons (nome_jogador, nome_inicial, pokemons_atuais, geracao, dataCriacao) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
-        conn.commit()
-
-
-        
-
-
-        
-        
+        input('Deseja ligar o auto save? (s/n)')
+        print('Apenas ligue se já tiver salvo os dados pelo menos uma vez!')
+        if input == 's' and autoSaveon == False:
+            autoSaveon = True
+            salvarGame()
+        salvarDados()    
         print('Informações adicionadas com sucesso ao db!')
         menu()
     
     elif escolha == '6':
-        logger('Checking Info Player')
+        logger('Checking Info Player Local')
         print(f'Nome do jogador atual é: {PlayerName}')
         print(f'Seus pokemons atuais são: {pokemonsAtuais}')
     
     elif escolha == '7':
-        logger('Checking Players in Database')
-        cur.execute('SELECT nome FROM jogadores')
-        for i in cur.fetchall():
-            print(f'Jogador: {i[0]}')
-    
+        checkAllPlayers()
+        
     elif escolha == '8':
-        logger('Changing Player Character')
-        infoData.clear()
-        PlayerName = ''
-        InitialPoke = ''
-        InitialPoke_boolean = False
-        pokemonsAtuais.clear()
-        infoData = input('Digite o nome do jogador: ')
-        infoData = [infoData]
-        PlayerName = infoData[0]
-        if checkPlayerExists(infoData[0]):
-            carregarDados()
-        else:
-            newGame()
+        changePlayer()
     
     elif escolha == '9':
         logger('Choosing First Pokemon')
-        cur.execute('SELECT nome_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+        cur.execute('SELECT pokemon_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
         checkifExist = cur.fetchall()
         if checkifExist:
             print('Você já escolheu um pokemon inicial')
@@ -231,11 +275,11 @@ infoData = [infoData]
 PlayerName = infoData[0]
 
 if checkPlayerExists(infoData[0]):
+    print('Jogador encontrado')
     carregarDados()
 else:
     newGame()
     
-    
-salvarGame()
+
 while True:
     menu()
