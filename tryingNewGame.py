@@ -14,7 +14,7 @@ InitialPoke_boolean = False
 PlayerName = ''
 InitialPoke = ''
 autoSaveon  = False
-
+perguntaAutoSave = True
 
 def checkInitialPoke(namePlayer):
     cur.execute('SELECT pokemon_inicial FROM pokemons WHERE nome_jogador = %s', (namePlayer,))
@@ -77,7 +77,7 @@ def salvarDados():
 """)      
         conn.commit()
 
-def salvarGame():
+def autoSave():
     global autoSaveon
     logger('Saving Data to Database')
     cur.execute('SELECT nome FROM players WHERE nome = %s', (infoData[0],))
@@ -89,7 +89,7 @@ def salvarGame():
             cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
     conn.commit()
     logger('autosave')
-    threading.Timer(30, salvarGame).start()
+    threading.Timer(30, autoSave).start()
 
 def checkPlayerExists(playerName):
     checkPlayer = cur.execute('SELECT * FROM players WHERE nome = %s', (playerName,))
@@ -210,7 +210,7 @@ def escolherGeracaoInicial():
             escolherGeracaoInicial()
             
 def menu():
-    global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName
+    global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName, autoSaveon, perguntaAutoSave
     print('Bem-vindo ao menu do jogo!')
     print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
     escolha = input('Escolha a opção: ')
@@ -240,11 +240,14 @@ def menu():
         raise SystemExit
 
     elif escolha == '5':
-        input('Deseja ligar o auto save? (s/n)')
-        print('Apenas ligue se já tiver salvo os dados pelo menos uma vez!')
-        if input == 's' and autoSaveon == False:
+        if perguntaAutoSave:
+            print('Apenas ligue se já tiver salvo os dados pelo menos uma vez!')
+            a = input('Deseja ligar o auto save? (s/n)')
+        
+        if perguntaAutoSave and a == 's':
             autoSaveon = True
-            salvarGame()
+            perguntaAutoSave = False
+            autoSave()
         salvarDados()    
         print('Informações adicionadas com sucesso ao db!')
         menu()

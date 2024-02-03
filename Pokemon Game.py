@@ -6,7 +6,7 @@ import threading
 import time
 
 dataAtual = datetime.datetime.now()
-conn = dbconnect.connectdb()
+conn = dbconnect.connectdb('PythonServerTest')
 cursor = conn.cursor()
 
 
