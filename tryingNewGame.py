@@ -2,6 +2,9 @@ import dbconnect
 import requests
 import datetime
 import threading
+import random
+import pygame
+
 
 dataAtual = datetime.datetime.now()
 try:
@@ -15,6 +18,7 @@ except Exception as e:
 
 
 pokemonsAtuais = []
+jogadorId = 0
 infoData = [] #[0] Player Name
 InitialPoke_boolean = False
 PlayerName = ''
@@ -42,6 +46,15 @@ def checkAllPlayers():
     cur.execute('SELECT nome FROM players')
     for i in cur.fetchall():
         print(f'Jogador: {i[0]}')
+
+def checkAllPokemons():
+    logger('Checking Pokemons in Database')
+    print(jogadorId)
+    #Selecionar ID do jgoador e pesquisar os pokemons na tabela pkoemons_capturados
+    cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
+    checkPockemon = cur.fetchall()
+    for i in checkPockemon:
+        print(f'Pokemons: {i[0]}')
         
 def checkPlayerExists(playerName):
     checkPlayer = cur.execute('SELECT * FROM players WHERE nome = %s', (playerName,))
@@ -63,80 +76,86 @@ def changePlayer():
     InitialPoke = ''
     InitialPoke_boolean = False
     pokemonsAtuais.clear()
+    print(pokemonsAtuais)
     infoData = input('Digite o nome do jogador: ')
     infoData = [infoData]
     PlayerName = infoData[0]
     if checkPlayerExists(infoData[0]):
         if checkInitialPoke(infoData[0]):
+            print('Jogador encontrado, trocando dados...')
             carregarDados()
         else:
+            print('Jogador encontrado, mas não escolheu um pokemon inicial')
             escolherGeracaoInicial()
     else:
         newGame()
 
 def salvarDados():
-        logger('Saving Data to Database')
-        cur.execute('SELECT nome FROM players WHERE nome = %s', (infoData[0],))
-        nomePlayerExist = cur.fetchall()
-        if nomePlayerExist:
-            if checkInitialPoke(infoData[0]):
-                print('Jogador encontrado')
-                cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0])) 
-            else:
-                print('Jogador encontrado, mas não tem pokemon inicial, criando novo save...')
-                # cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, geracaoEscolhida, dataAtual, pokemonsAtuais[0]))
-                cur.execute(f"""
-    INSERT INTO pokemons (jogador_id, nome_jogador, pokemon_inicial, geracao, datacriacao, pokemons_atuais)
-    SELECT id, nome, '{InitialPoke}', '{geracaoEscolhida}', '{dataAtual}', '{pokemonsAtuais[0]}'
+    #Salvar o id, nome, pokemon inicial, geracao, data, pokemons atuais
+    global infoData, pokemonsAtuais, InitialPoke, geracaoEscolhida
+    if checkPlayerExists(infoData[0]):
+        if checkInitialPoke(infoData[0]):
+            #Salvar os pokemons da tabela pokemon capturados na lista de pokemons atuais
+            cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
+            pokemonsAtuais = cur.fetchall()
+            pokemonsAtuais = [i[0] for i in pokemonsAtuais]
+            print(pokemonsAtuais)
+            logger('Saving Data to Database, Player Exists')
+        else:
+            logger('Saving Data to Database, New Player')
+            cur.execute(f"""
+    INSERT INTO pokemons (jogador_id, nome_jogador, pokemon_inicial, geracao, datacriacao)
+    SELECT id, nome, '{InitialPoke}', {geracaoEscolhida}, '{dataAtual}'
     FROM players
     WHERE nome = '{infoData[0]}';
 """)
-
-        else:
-            print('Jogador não encontrado')
-            # cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
-            cur.execute(f"""
-    INSERT INTO pokemons (jogador_id, nome_jogador, geracao, datacriacao, pokemons_atuais)
-    SELECT id, nome, '{geracaoEscolhida}','{dataAtual}, '{pokemonsAtuais[0]}
-    FROM players
-    WHERE nome = '{infoData[0]}';
-""")      
-        conn.commit()
+            conn.commit()
 
 def autoSave():
     global autoSaveon
-    logger('Saving Data to Database')
-    cur.execute('SELECT nome FROM players WHERE nome = %s', (infoData[0],))
-    nomePlayerExist = cur.fetchall()
-    if nomePlayerExist:
+    global infoData, pokemonsAtuais, InitialPoke, geracaoEscolhida
+    if checkPlayerExists(infoData[0]):
         if checkInitialPoke(infoData[0]):
-            cur.execute('UPDATE pokemons SET pokemons_atuais = %s WHERE nome_jogador = %s', (pokemonsAtuais[0], infoData[0]))  # Ajuste aqui
+            #Salvar os pokemons da tabela pokemon capturados na lista de pokemons atuais
+            cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
+            pokemonsAtuais = cur.fetchall()
+            pokemonsAtuais = [i[0] for i in pokemonsAtuais]
+            logger('Saving Data to Database, Player Exists')
         else:
-            cur.execute('INSERT INTO pokemons (nome_jogador, pokemon_inicial, geracao, dataCriacao, pokemons_atuais) VALUES (%s, %s, %s, %s, %s)', (infoData[0], InitialPoke, pokemonsAtuais[0], geracaoEscolhida, dataAtual))  # Ajuste aqui
-    conn.commit()
+            logger('Saving Data to Database, New Player')
+            cur.execute(f"""
+    INSERT INTO pokemons (jogador_id, nome_jogador, pokemon_inicial, geracao, datacriacao)
+    SELECT id, nome, '{InitialPoke}', {geracaoEscolhida}, '{dataAtual}'
+    FROM players
+    WHERE nome = '{infoData[0]}';
+""")
+            conn.commit()
     logger('autosave')
     threading.Timer(30, autoSave).start()
 
 def carregarDados():
-    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida
-    #Carrega os pokemons atuais
-    cur.execute('SELECT pokemons_atuais FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
-    pokemonsAtuais = cur.fetchall()
-    
-    #Carrega a geração escolhida
-    geracaoEscolhida = cur.execute('SELECT geracao FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
-    geracaoEscolhida = cur.fetchall()
-    geracaoEscolhida = int(geracaoEscolhida[0][0])
-    
-    #Carrega Pokemon inicial
-    PokemonInitialCheck = cur.execute('SELECT pokemon_inicial FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
-    PokemonInitialCheck = cur.fetchall()
-    if PokemonInitialCheck != None:
-        InitialPoke_boolean = True
-        InitialPoke = PokemonInitialCheck
-    logger('load data')
-    print('Carregando save...\n')
-
+    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida, jogadorId
+    if checkInitialPoke(infoData[0]):
+        try:
+            jogadorId = cur.execute('SELECT id FROM players WHERE nome = %s', (infoData[0],))
+            jogadorId = cur.fetchone()
+            print(jogadorId)
+            
+            #Carrega os pokemons atuais da tabela pokemons capturados
+            cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
+            pokemonsAtuais = cur.fetchall()
+            pokemonsAtuais = [i[0] for i in pokemonsAtuais]
+            
+            #Carrega a geração escolhida
+            cur.execute('SELECT geracao FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
+            geracaoEscolhida = cur.fetchone()
+            geracaoEscolhida = geracaoEscolhida[0]
+            logger('load data')
+        except Exception as e:
+            print('Erro ao carregar os dados', e)
+            logger(e)
+            menu()
+        
 #Criar novo personagem
 
 def newGame():
@@ -150,7 +169,7 @@ def newGame():
 
 def criarSave():
     logger('Creating New character')
-    global infoData, PlayerName, InitialPoke_boolean, InitialPoke
+    global infoData, PlayerName, InitialPoke_boolean, InitialPoke, jogadorId
     infosNewPlayer = []
     nome = infoData[0]
     PlayerName = infoData[0]
@@ -170,12 +189,13 @@ def criarSave():
     logger('criando save')
     print('Informações adicionadas com sucesso ao db!')
     print('Direcionando para seleção de pokemon inicial...')
+    jogadorId = cur.execute('SELECT id FROM players WHERE nome = %s', (infoData[0],))
+    jogadorId = cur.fetchone()[0]
     escolherGeracaoInicial()
     return       
 
-def escolherInicial(geracaoEscolhida):
+def escolherInicial(geracaoEscolhida): #FUNCIONA
     global InitialPoke, InitialPoke_boolean
-    logger('Chossing First Pokemon')
     pokemonInicial = input('Escolha seu pokemon inicial: ')
     pokemons = requests.get(f'https://pokeapi.co/api/v2/generation/{geracaoEscolhida}').json().get('pokemon_species')
     for index, pokemon in enumerate(pokemons):
@@ -188,6 +208,19 @@ def escolherInicial(geracaoEscolhida):
                 print(f'Pokemon inicial escolhido: {pokemonInicial}')
                 InitialPoke_boolean = True
                 InitialPoke = pokemonInicial
+                #pegar o id do pokemonInicial
+                try:
+                    pokemonSorteadoInit = requests.get(f'https://pokeapi.co/api/v2/pokemon-species/{InitialPoke}/').json()
+                    
+                    pokemonSorteadoID = pokemonSorteadoInit['id']
+                except Exception as e:
+                    print('Erro ao pegar o id do pokemon', e)
+                    logger(e)
+                    menu()
+                cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteadoID, InitialPoke, dataAtual))
+                conn.commit()
+                logger('First Pokemon Choose')
+                salvarDados()
                 return
             if index >3:
                 print('Pokemon não encontrado, tente novamente')
@@ -224,28 +257,86 @@ def logger(where):
     FROM players
     WHERE nome = '{infoData[0]}';
 """)
-    # cur.execute('INSERT INTO logsJoin (nome, dateJoin, locale) VALUES (%s, %s, %s)', (infoData[0], dataAtual, where))
     conn.commit()
     print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
+
+#Audio Func
+
+def playAudioBackground():
+    try:
+        pygame.mixer.init()
+        pygame.mixer.music.load('audios/teste.mp3')
+        pygame.mixer.music.set_volume(0.040)
+        pygame.mixer.music.play(-1)
+    except Exception as e:
+        print('Erro ao tocar o audio', e)
+        logger(e)
+        menu()
+
 
 
 #Funcoes para a gameplay
 
-
-       
+def pegarPokemon():
+    try:
+        pokemons = requests.get('https://pokeapi.co/api/v2/pokedex/1').json().get('pokemon_entries')
+    except Exception as e:
+        print('Erro ao pegar os pokemons', e)
+        logger(e)
+        menu()
+    geracoes = {
+            1: slice(0, 151),
+            2: slice(151, 251),
+            3: slice(251, 386),
+            4: slice(386, 493),
+            5: slice(493, 649),
+            6: slice(649, 721),
+            7: slice(721, 809),
+            8: slice(809, 898),
+            9: slice(898, 1000)
+        }
+    print(geracaoEscolhida)
+    if geracaoEscolhida in geracoes:
+        pokemonSorteado = random.choice(pokemons[geracoes[geracaoEscolhida]])
+    
+    capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')    
+    if capturar == 's':
+        pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
+        print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
+        try:
+            cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
+            logger('Capturando Pokemon')
+            conn.commit()
+        except Exception as e:
+            print('Erro ao capturar o pokemon', e)
+            logger(e)
+            menu()
+        print(f'Pokemons atuais: {pokemonsAtuais}')
+        menu()
+    else:
+        print('Pokemon não capturado')
+        menu()
+        
+#Menu Principal 
+        
 def menu():
     global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName, autoSaveon, perguntaAutoSave
+
+
+    print(f'Pokemons atuais: {pokemonsAtuais}')
     print('Bem-vindo ao menu do jogo!')
     print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
+    
+    
     escolha = input('Escolha a opção: ')
+    
+    
     if escolha == '1':
         logger('Entering New Game')
-
-    
+ 
     elif escolha == '2':
         logger('Checking Database for Pokemons')
-        cur.execute('SELECT pokemons_atuais FROM pokemons WHERE nome_jogador = %s', (infoData[0],))
-        print(f'Seus pokemons atuais são: {cur.fetchall()}\n')
+        checkAllPokemons()
         menu()
         
     elif escolha == '3':
@@ -279,6 +370,7 @@ def menu():
     elif escolha == '6':
         logger('Checking Info Player Local')
         print(f'Nome do jogador atual é: {PlayerName}')
+        print(f'Jogador ID: {jogadorId}')
         print(f'Seus pokemons atuais são: {pokemonsAtuais}')
     
     elif escolha == '7':
@@ -296,17 +388,29 @@ def menu():
             menu()
         else:
             escolherGeracaoInicial()
+    
+    elif escolha == '10':
+        pegarPokemon()
 
 infoData = input('Digite o nome do jogador: ').lower()
 infoData = [infoData]
 PlayerName = infoData[0]
 
 if checkPlayerExists(infoData[0]):
+    jogadorId = cur.execute('SELECT id FROM players WHERE nome = %s', (infoData[0],))
+    jogadorId = cur.fetchone()
+    
+    print(f'Jogador encontrado: {infoData[0]} {jogadorId[0]}\n')
     print('Jogador encontrado')
     carregarDados()
+    
 else:
     newGame()
     
+audio_thread = threading.Thread(target=playAudioBackground)
+audio_thread.daemon = True
+audio_thread.start()
 
 while True:
     menu()
+    
