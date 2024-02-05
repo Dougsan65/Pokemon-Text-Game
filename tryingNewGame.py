@@ -72,7 +72,7 @@ def checkInfoPlayerLocal():
     print(f'Pokemon inicial: {InitialPoke}')
     print(f'Geração escolhida: {geracaoEscolhida}')
     print(f'Pokemons atuais: {", ".join(pokemonsAtuais)}')
-    print(f'Pokebolas atuais:\n Pokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
+    print(f'Pokebolas atuais:\nPokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
 
 def checkAllPokemons():
     logger('Checking Pokemons in Database')
@@ -166,7 +166,6 @@ def salvarDados():
             cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
             pokemonsAtuais = cur.fetchall()
             pokemonsAtuais = [i[0] for i in pokemonsAtuais]
-            print(pokemonsAtuais)
             logger('Saving Data to Database, Player Exists')
         else:
             logger('Saving Data to Database, New Player')
@@ -221,7 +220,6 @@ def carregarDados():
             #Carrega o Poke Inicial
             cur.execute('SELECT pokemon_inicial FROM pokemons WHERE jogador_id = %s', (jogadorId,))
             InitialPoke = cur.fetchone()[0]
-            print(f'Pokemon inicial: {InitialPoke}')
             logger('load success')
             
             #Carrega as Pokebolas
@@ -290,8 +288,6 @@ def escolherInicial(geracaoEscolhida):
     pokemons = requests.get(f'https://pokeapi.co/api/v2/generation/{geracaoEscolhida}').json().get('pokemon_species')
     for index, pokemon in enumerate(pokemons):
         if index < 3:
-            print(pokemon['name'])
-            
             if pokemon['name'] == pokemonInicial:
                 print(pokemonInicial, pokemon['name'])
                 pokemonsAtuais.append(pokemonInicial)
@@ -352,7 +348,7 @@ def logger(where):
 """)
     conn.commit()
     print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
-    time.sleep(0.5)
+    time.sleep(0.9)
     os.system('cls')
 
 #Audio Func
@@ -402,8 +398,8 @@ def pegarPokemon():
     else:
         print('Geração inválida')
         time.sleep(3)
-    print(pokemonSorteado)
-    choosePokeball = input(f'Escolha a pokebola que deseja escolher: \nPokebolas Atuais:\n Pokebola: {pokebolas["pokebola"]}\n Superbola: {pokebolas["superbola"]}\n Ultrabola: {pokebolas["ultrabola"]}\n Masterbola: {pokebolas["masterbola"]}\n')
+
+    choosePokeball = input(f'Pokebolas Atuais:\n Pokebola: {pokebolas["pokebola"]}\n Superbola: {pokebolas["superbola"]}\n Ultrabola: {pokebolas["ultrabola"]}\n Masterbola: {pokebolas["masterbola"]}\nEscolha a pokebola que deseja escolher: ')
 
     if choosePokeball in pokebolas:
         print(f'Você escolheu a pokebola {choosePokeball}')
@@ -411,51 +407,55 @@ def pegarPokemon():
             print('Você não tem pokebolas suficientes')
             menu()
         else:
-            pokebolas[choosePokeball] -= 1
+            capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
+
+            if capturar == 's':
+                pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
+
+                print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
+                pokebolas[choosePokeball] -= 1
+                time.sleep(2)
+
+                try:
+                    cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
+                    logger('Capturando Pokemon')
+                    conn.commit()
+                except Exception as e:
+                    print('Erro ao capturar o pokemon', e)
+                    logger(e)
+                    menu()
+
+                print(f'Pokemons Atuais Atualizados: {", ".join(pokemonsAtuais)}')
+                time.sleep(5)
+                menu()
+            else:
+                option = input('Deseja tentar novamente? (s/n)')
+                if option == 's':
+                    return pegarPokemon()
+                else:
+                    print('Pokemon não capturado')
+                    menu()
+                
     else:
         print('Escolha inválida')
         return pegarPokemon()
 
-    capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
-
-    if capturar == 's':
-        pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
-
-        print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
-
-        try:
-            time.sleep(2)
-            cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
-            logger('Capturando Pokemon')
-            conn.commit()
-        except Exception as e:
-            print('Erro ao capturar o pokemon', e)
-            logger(e)
-            menu()
-
-        print(f'Pokemons Atuais Atualizados: {", ".join(pokemonsAtuais)}')
-        menu()
-    else:
-        option = input('Deseja tentar novamente? (s/n)')
-        if option == 's':
-            return pegarPokemon()
-        else:
-            print('Pokemon não capturado')
-            menu()
+    
 
 
 def gerenciamentoPokebolas():
     global pokebolas
     print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
     escolha = input('Escolha a pokebola que deseja receber: ')
+    quantidade = int(input('Digite a quantidade: '))
     if escolha == 'pokebola':
-        pokebolas['pokebola'] += 1
+        pokebolas['pokebola'] += quantidade
     elif escolha == 'superbola':
-        pokebolas['superbola'] += 1
+        pokebolas['superbola'] += quantidade
     elif escolha == 'ultrabola':
-        pokebolas['ultrabola'] += 1
+        pokebolas['ultrabola'] += quantidade
     elif escolha == 'masterbola':
-        pokebolas['masterbola'] += 1
+        pokebolas['masterbola'] += quantidade
     else:
         print('Escolha inválida')
         gerenciamentoPokebolas()
