@@ -27,8 +27,23 @@ PlayerName = ''
 InitialPoke = ''
 autoSaveon  = False
 perguntaAutoSave = True
+pokebolas = {
+    'pokebola': 0,
+    'superbola': 0,
+    'ultrabola': 0,
+    'masterbola': 0
+}
 
 #Check Functions
+
+def checkPlayesHasPokeballs(idPlayer):
+    cur.execute('SELECT * FROM pokebolas WHERE jogador_id = %s', (idPlayer,))#2345
+    pokebolasbd = cur.fetchone()
+    if not pokebolasbd:
+        return False
+    else:
+        return True
+
 
 def checkInitialPoke(namePlayer):
     try:
@@ -49,6 +64,16 @@ def checkAllPlayers():
     for i in cur.fetchall():
         print(f'Jogador: {i[0]}')
     print('\n')
+
+def checkInfoPlayerLocal():
+    logger('Checking Local Player Info')
+    print(f'Nome do jogador atual é: {PlayerName}')
+    print(f'Jogador ID: {jogadorId[0]}')
+    print(f'Pokemon inicial: {InitialPoke}')
+    print(f'Geração escolhida: {geracaoEscolhida}')
+    print(f'Pokemons atuais: {", ".join(pokemonsAtuais)}')
+    print(f'Pokebolas atuais:\n Pokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
+
 
 def checkAllPokemons():
     logger('Checking Pokemons in Database')
@@ -79,12 +104,18 @@ def checkPlayerExists(playerName):
 #Funcoes de Data Management
 
 def changePlayer():
-    global infoData, PlayerName, InitialPoke, InitialPoke_boolean, pokemonsAtuais
+    global infoData, PlayerName, InitialPoke, InitialPoke_boolean, pokemonsAtuais, pokebolas
     infoData.clear()
     PlayerName = ''
     InitialPoke = ''
     InitialPoke_boolean = False
     pokemonsAtuais.clear()
+    pokebolas = {
+        'pokebola': 0,
+        'superbola': 0,
+        'ultrabola': 0,
+        'masterbola': 0
+    }
     os.system('cls')
     infoData = input('Digite o nome do jogador: ')
     infoData = [infoData]
@@ -106,6 +137,31 @@ def salvarDados():
     global infoData, pokemonsAtuais, InitialPoke, geracaoEscolhida
     if checkPlayerExists(infoData[0]):
         if checkInitialPoke(infoData[0]):
+            #Salvar as pokebolas na tebela pokebolas
+            #Checar se o id do jogador já existe na tabela pokebolas
+            cur.execute('SELECT jogador_id FROM pokebolas WHERE jogador_id = %s', (jogadorId,))
+            checkPokebolas = cur.fetchall()
+            if not checkPokebolas:
+                cur.execute(f"""
+    INSERT INTO pokebolas (jogador_id, qntd_pokebola, qntd_superbola, qntd_ultrabola, qntd_masterbola, data_time)
+    SELECT id, {pokebolas['pokebola']}, {pokebolas['superbola']}, {pokebolas['ultrabola']}, {pokebolas['masterbola']}, '{dataAtual}'
+    FROM players
+    WHERE nome = '{infoData[0]}';
+""")
+
+                conn.commit()
+            else:
+                cur.execute(f"""
+    UPDATE pokebolas
+    SET qntd_pokebola = {pokebolas['pokebola']},
+        qntd_superbola = {pokebolas['superbola']},
+        qntd_ultrabola = {pokebolas['ultrabola']},
+        qntd_masterbola = {pokebolas['masterbola']},
+        data_time = '{dataAtual}'
+""")
+                conn.commit()
+            
+            
             #Salvar os pokemons da tabela pokemon capturados na lista de pokemons atuais
             cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
             pokemonsAtuais = cur.fetchall()
@@ -145,9 +201,10 @@ def autoSave():
     threading.Timer(30, autoSave).start()
 
 def carregarDados():
-    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida, jogadorId
+    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida, jogadorId, pokebolas
     if checkInitialPoke(infoData[0]):
         try:
+            #Carrega id do jogador
             jogadorId = cur.execute('SELECT id FROM players WHERE nome = %s', (infoData[0],))
             jogadorId = cur.fetchone()
             
@@ -161,11 +218,28 @@ def carregarDados():
             geracaoEscolhida = cur.fetchone()
             geracaoEscolhida = geracaoEscolhida[0]
             
-            #Poke Inicial
+            #Carrega o Poke Inicial
             cur.execute('SELECT pokemon_inicial FROM pokemons WHERE jogador_id = %s', (jogadorId,))
             InitialPoke = cur.fetchone()[0]
             print(f'Pokemon inicial: {InitialPoke}')
             logger('load success')
+            
+            #Carrega as Pokebolas
+            #func to check if the player has a line in the pokebolas table
+            if checkPlayesHasPokeballs(jogadorId):
+                
+                cur.execute('SELECT * FROM pokebolas WHERE jogador_id = %s', (jogadorId,))#2345
+                pokebolasbd = cur.fetchone()
+                pokebolas = {
+                    'pokebola': pokebolasbd[2],
+                    'superbola': pokebolasbd[3],
+                    'ultrabola': pokebolasbd[4],
+                    'masterbola': pokebolasbd[5]
+                }
+                conn.commit()
+                logger('load pokeballs success')
+            else:
+                logger('player dont have pokeballs')
         except Exception as e:
             print('Erro ao carregar os dados: ', e)
             logger(e)
@@ -274,7 +348,7 @@ def logger(where):
 """)
     conn.commit()
     print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
-    time.sleep(3)
+    time.sleep(0.5)
     os.system('cls')
 
 #Audio Func
@@ -333,12 +407,28 @@ def pegarPokemon():
     else:
         print('Pokemon não capturado')
         menu()
-        
+
+def gerenciamentoPokebolas():
+    global pokebolas
+    print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
+    escolha = input('Escolha a pokebola que deseja receber: ')
+    if escolha == 'pokebola':
+        pokebolas['pokebola'] += 1
+    elif escolha == 'superbola':
+        pokebolas['superbola'] += 1
+    elif escolha == 'ultrabola':
+        pokebolas['ultrabola'] += 1
+    elif escolha == 'masterbola':
+        pokebolas['masterbola'] += 1
+    else:
+        print('Escolha inválida')
+        gerenciamentoPokebolas()
+    print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
+    menu()
 #Menu Principal 
         
 def menu():
     global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName, autoSaveon, perguntaAutoSave
-
 
     print(f'Bem-vindo {infoData[0]} ao menu do jogo!')
     print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
@@ -384,12 +474,8 @@ def menu():
         menu()
     
     elif escolha == '6':
-        logger('Checking Info Player Local')
-        print(f'Nome do jogador atual é: {PlayerName}')
-        print(f'Jogador ID: {jogadorId[0]}')
-        print(f'Pokemon inicial: {InitialPoke}')
-        print(f'Geração escolhida: {geracaoEscolhida}')
-        print(f'Pokemons atuais: {", ".join(pokemonsAtuais)}\n')
+        checkInfoPlayerLocal()
+        time.sleep(5)
         
     
     elif escolha == '7':
@@ -410,6 +496,9 @@ def menu():
     
     elif escolha == '10':
         pegarPokemon()
+        
+    elif escolha == '11':
+        gerenciamentoPokebolas()
 
 os.system('cls')
 infoData = input('Digite o nome do jogador: ').lower()
@@ -428,4 +517,3 @@ audio_thread.start()
 
 while True:
     menu()
-    
