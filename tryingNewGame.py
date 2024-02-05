@@ -18,13 +18,14 @@ except Exception as e:
 
 
 
+#Variaveis Globais
 
+PlayerName = ''
+infoData = []
 pokemonsAtuais = []
 jogadorId = 0
-infoData = [] #[0] Player Name
-InitialPoke_boolean = False
-PlayerName = ''
 InitialPoke = ''
+InitialPoke_boolean = False
 autoSaveon  = False
 perguntaAutoSave = True
 pokebolas = {
@@ -43,7 +44,6 @@ def checkPlayesHasPokeballs(idPlayer):
         return False
     else:
         return True
-
 
 def checkInitialPoke(namePlayer):
     try:
@@ -73,7 +73,6 @@ def checkInfoPlayerLocal():
     print(f'Geração escolhida: {geracaoEscolhida}')
     print(f'Pokemons atuais: {", ".join(pokemonsAtuais)}')
     print(f'Pokebolas atuais:\n Pokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
-
 
 def checkAllPokemons():
     logger('Checking Pokemons in Database')
@@ -158,6 +157,7 @@ def salvarDados():
         qntd_ultrabola = {pokebolas['ultrabola']},
         qntd_masterbola = {pokebolas['masterbola']},
         data_time = '{dataAtual}'
+    WHERE   jogador_id = {jogadorId[0]};
 """)
                 conn.commit()
             
@@ -252,6 +252,7 @@ def newGame():
     newSave = input('Esse personagem não existe, criando um novo save (s para continuar)')
     if newSave == 's':
         criarSave()
+        carregarDados()
         menu()
     else:
         raise SystemExit
@@ -279,11 +280,11 @@ def criarSave():
     print('Informações adicionadas com sucesso ao db!')
     print('Direcionando para seleção de pokemon inicial...')
     jogadorId = cur.execute('SELECT id FROM players WHERE nome = %s', (infoData[0],))
-    jogadorId = cur.fetchone()[0]
+    jogadorId = cur.fetchone()
     escolherGeracaoInicial()
     return       
 
-def escolherInicial(geracaoEscolhida): #FUNCIONA
+def escolherInicial(geracaoEscolhida):
     global InitialPoke, InitialPoke_boolean
     pokemonInicial = input('Escolha seu pokemon inicial: ')
     pokemons = requests.get(f'https://pokeapi.co/api/v2/generation/{geracaoEscolhida}').json().get('pokemon_species')
@@ -335,6 +336,9 @@ def escolherGeracaoInicial():
             pass
         else:
             escolherGeracaoInicial()
+    else:
+        print('Geração inválida')
+        escolherGeracaoInicial()
 
 #Logger
             
@@ -364,8 +368,6 @@ def playAudioBackground():
         logger(e)
         menu()
 
-
-
 #Funcoes para a gameplay
 
 def pegarPokemon():
@@ -375,26 +377,54 @@ def pegarPokemon():
         print('Erro ao pegar os pokemons', e)
         logger(e)
         menu()
+
     geracoes = {
-            1: slice(0, 151),
-            2: slice(151, 251),
-            3: slice(251, 386),
-            4: slice(386, 493),
-            5: slice(493, 649),
-            6: slice(649, 721),
-            7: slice(721, 809),
-            8: slice(809, 898),
-            9: slice(898, 1000)
-        }
-    print(geracaoEscolhida)
-    if geracaoEscolhida in geracoes:
-        pokemonSorteado = random.choice(pokemons[geracoes[geracaoEscolhida]])
+        1: slice(0, 151),
+        2: slice(151, 251),
+        3: slice(251, 386),
+        4: slice(386, 493),
+        5: slice(493, 649),
+        6: slice(649, 721),
+        7: slice(721, 809),
+        8: slice(809, 898),
+        9: slice(898, 1000)
+    }
+
     
-    capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')    
+    if geracaoEscolhida in geracoes:
+        try:
+            pokemonSorteado = random.choice(pokemons[geracoes[geracaoEscolhida]])
+        except Exception as e:
+            salvarDados()
+            print('Erro ao sortear o pokemon', e)
+            logger(e)
+            menu()
+    else:
+        print('Geração inválida')
+        time.sleep(3)
+    print(pokemonSorteado)
+    choosePokeball = input(f'Escolha a pokebola que deseja escolher: \nPokebolas Atuais:\n Pokebola: {pokebolas["pokebola"]}\n Superbola: {pokebolas["superbola"]}\n Ultrabola: {pokebolas["ultrabola"]}\n Masterbola: {pokebolas["masterbola"]}\n')
+
+    if choosePokeball in pokebolas:
+        print(f'Você escolheu a pokebola {choosePokeball}')
+        if pokebolas[choosePokeball] == 0:
+            print('Você não tem pokebolas suficientes')
+            menu()
+        else:
+            pokebolas[choosePokeball] -= 1
+    else:
+        print('Escolha inválida')
+        return pegarPokemon()
+
+    capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
+
     if capturar == 's':
         pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
+
         print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
+
         try:
+            time.sleep(2)
             cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
             logger('Capturando Pokemon')
             conn.commit()
@@ -402,11 +432,17 @@ def pegarPokemon():
             print('Erro ao capturar o pokemon', e)
             logger(e)
             menu()
-        print(f'Pokemons Atuais Atualizados: {', '.join(pokemonsAtuais)}')
+
+        print(f'Pokemons Atuais Atualizados: {", ".join(pokemonsAtuais)}')
         menu()
     else:
-        print('Pokemon não capturado')
-        menu()
+        option = input('Deseja tentar novamente? (s/n)')
+        if option == 's':
+            return pegarPokemon()
+        else:
+            print('Pokemon não capturado')
+            menu()
+
 
 def gerenciamentoPokebolas():
     global pokebolas
@@ -425,11 +461,12 @@ def gerenciamentoPokebolas():
         gerenciamentoPokebolas()
     print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
     menu()
+
 #Menu Principal 
         
 def menu():
     global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName, autoSaveon, perguntaAutoSave
-
+    salvarDados()
     print(f'Bem-vindo {infoData[0]} ao menu do jogo!')
     print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
     
