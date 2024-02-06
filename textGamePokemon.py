@@ -23,11 +23,27 @@ except Exception as e:
 PlayerName = ''
 infoData = []
 pokemonsAtuais = []
+dinheiroJogador = 0
 jogadorId = 0
 InitialPoke = ''
 InitialPoke_boolean = False
 autoSaveon  = False
 perguntaAutoSave = True
+
+itensPrice = {
+    'pokebola': 200,
+    'superbola': 500,
+    'ultrabola': 1000,
+    'masterbola': 2000
+}
+
+itensJogador = {
+    'pokebola': 0,
+    'superbola': 0,
+    'ultrabola': 0,
+    'masterbola': 0
+}
+
 pokebolas = {
     'pokebola': 0,
     'superbola': 0,
@@ -70,6 +86,7 @@ def checkInfoPlayerLocal():
     print('\n\n')
     print(f'Nome do jogador atual é: {PlayerName}')
     print(f'Jogador ID: {jogadorId[0]}')
+    print(f'Dinheiro do jogador: {dinheiroJogador}')
     print(f'Pokemon inicial: {InitialPoke}')
     print(f'Geração escolhida: {geracaoEscolhida}')
     print(checkAllPokemons())
@@ -142,7 +159,7 @@ def salvarDados():
             if not checkPokebolas:
                 cur.execute(f"""
     INSERT INTO pokebolas (jogador_id, qntd_pokebola, qntd_superbola, qntd_ultrabola, qntd_masterbola, data_time)
-    SELECT id, {pokebolas['pokebola']}, {pokebolas['superbola']}, {pokebolas['ultrabola']}, {pokebolas['masterbola']}, '{dataAtual}'
+    SELECT id, {3}, {pokebolas['superbola']}, {pokebolas['ultrabola']}, {pokebolas['masterbola']}, '{dataAtual}'
     FROM players
     WHERE nome = '{infoData[0]}';
 """)
@@ -161,10 +178,9 @@ def salvarDados():
                 conn.commit()
             
             
-            #Salvar os pokemons da tabela pokemon capturados na lista de pokemons atuais
-            cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
-            pokemonsAtuais = cur.fetchall()
-            pokemonsAtuais = [i[0] for i in pokemonsAtuais]
+            #Salvar o dinheiro atual do jogador na tabela players
+            cur.execute('UPDATE players SET dinheiro = %s WHERE id = %s', (dinheiroJogador, jogadorId))
+            
             logger('Saving Data to Database, Player Exists')
         else:
             logger('Saving Data to Database, New Player')
@@ -182,7 +198,7 @@ def autoSave():
     threading.Timer(30, autoSave).start()
 
 def carregarDados():
-    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida, jogadorId, pokebolas
+    global infoData, pokemonsAtuais, PokemonInitialCheck, InitialPoke_boolean, pokeInicialEscolhido, InitialPoke, geracaoEscolhida, jogadorId, pokebolas, dinheiroJogador
     if checkInitialPoke(infoData[0]):
         try:
             #Carrega id do jogador
@@ -198,6 +214,11 @@ def carregarDados():
             cur.execute('SELECT geracao FROM pokemons WHERE jogador_id = %s', (jogadorId,))
             geracaoEscolhida = cur.fetchone()
             geracaoEscolhida = geracaoEscolhida[0]
+            
+            #Carrega o Dinheiro do Jogador
+            cur.execute('SELECT dinheiro FROM players WHERE id = %s', (jogadorId,))
+            dinheiroJogador = cur.fetchone()
+            dinheiroJogador = dinheiroJogador[0]
             
             #Carrega o Poke Inicial
             cur.execute('SELECT pokemon_inicial FROM pokemons WHERE jogador_id = %s', (jogadorId,))
@@ -353,6 +374,7 @@ def playAudioBackground():
 #Funcoes para a gameplay
 
 def pegarPokemon():
+    global pokemonsAtuais, dinheiroJogador, pokebolas
     os.system('cls')
     try:
         pokemons = requests.get('https://pokeapi.co/api/v2/pokedex/1').json().get('pokemon_entries')
@@ -373,10 +395,23 @@ def pegarPokemon():
         9: slice(898, 1000)
     }
 
+    moneyEarned = {
+        1: 100,
+        2: 200,
+        3: 300,
+        4: 400,
+        5: 500,
+        6: 600,
+        7: 700,
+        8: 800,
+        9: 900,
+        10: 1000}
     
     if geracaoEscolhida in geracoes:
         try:
             pokemonSorteado = random.choice(pokemons[geracoes[geracaoEscolhida]])
+            moneyEarned = random.choice(moneyEarned)
+            
         except Exception as e:
             salvarDados()
             print('Erro ao sortear o pokemon', e)
@@ -385,94 +420,100 @@ def pegarPokemon():
     else:
         print('Geração inválida')
         time.sleep(3)
-
-    for i in pokebolas:
-        print(f'{i}: {pokebolas[i]}')
-    choosePokeball = input('Escolha a pokebola que deseja usar: (enter para sair)')
-    os.system('cls')
-    if choosePokeball in pokebolas:
-        print(f'Você escolheu a pokebola {choosePokeball}')
-        if pokebolas[choosePokeball] == 0:
-            print('Você não tem pokebolas suficientes')
-            time.sleep(3)
-            return menu()
-        else:
-            capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
-
-            if capturar == 's':
-                pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
-
-                print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
-                pokebolas[choosePokeball] -= 1
-                time.sleep(2)
-
-                try:
-                    cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
-                    logger('Capturando Pokemon')
-                    conn.commit()
-                except Exception as e:
-                    print('Erro ao capturar o pokemon', e)
-                    logger(e)
-                    return menu()
-
-                print(f'Pokemons Atuais Atualizados: {", ".join(pokemonsAtuais)}')
-                time.sleep(5)
-                return menu()
-            else:
-                option = input('Deseja tentar novamente? (s/n)')
-                if option == 's':
-                    return pegarPokemon()
-                else:
-                    print('Pokemon não capturado')
-                    logger('Pokemon not captured')
-                    return menu()
-    elif choosePokeball == '':
-        return menu()           
-    else:
-        print('Escolha inválida')
-        logger('Invalid Choice to choose pokeball')
-        return pegarPokemon()
-
     
+    capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
 
+    if capturar == 's':
+        pokemonsAtuais.append(pokemonSorteado['pokemon_species']['name'])
+
+        print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
+        for i in pokebolas:
+            print(f'{i}: {pokebolas[i]}')
+        choosePokeball = input('Escolha a pokebola que deseja usar: (enter para sair)')
+        
+        os.system('cls')
+        if choosePokeball in pokebolas:
+            print(f'Você escolheu a pokebola: {choosePokeball.capitalize()}')
+            print('Capturando pokemon...')
+            time.sleep(2)
+            
+            if pokebolas[choosePokeball] == 0:
+                print('Você não tem pokebolas suficientes')
+                time.sleep(2)
+                return menu()
+        elif choosePokeball == '':
+            return menu()           
+        else:
+            print('Escolha inválida')
+            logger('Invalid Choice to choose pokeball')
+            return pegarPokemon()
+        
+
+        try:
+            dinheiroJogador += moneyEarned
+            pokebolas[choosePokeball] -= 1
+            cur.execute('INSERT INTO pokemons_capturados (jogador_id, pokemon_id, nome_pokemon, data_captura) VALUES (%s, %s, %s, %s)', (jogadorId, pokemonSorteado['entry_number'], pokemonSorteado['pokemon_species']['name'], dataAtual))
+            conn.commit()
+            cur.execute('UPDATE players SET dinheiro = %s WHERE id = %s', (dinheiroJogador, jogadorId))
+            
+            logger('Capturando Pokemon')
+            conn.commit()
+        except Exception as e:
+            print('Erro ao capturar o pokemon', e)
+            logger(e)
+            return menu()
+
+        print(f'Pokemon {pokemonSorteado["pokemon_species"]["name"]} capturado com sucesso!')
+        print(f'Você ganhou {moneyEarned} de dinheiro')
+        
+        time.sleep(5)
+        return menu()
+    else:
+        option = input('Deseja tentar novamente? (s/n)')
+        if option == 's':
+            return pegarPokemon()
+        else:
+            print('Pokemon não capturado')
+            logger('Pokemon not captured')
+            return menu()
+    
+    
+   
 
 def gerenciamentoPokebolas():
-    global pokebolas
+    global pokebolas, dinheiroJogador
     logger('Getting Pokeballs')
     print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
-    print('  (1) - Pokebola\n'
-          '  (2) - Superbola\n'
-          '  (3) - Ultrabola\n'
-          '  (4) - Masterbola\n')
-    escolha = input('Escolha a pokebola que deseja receber: (enter para sair)')
+    print(f'Dinheiro atual: {dinheiroJogador}')
+    print('Preço das pokebolas:\n'
+          '(1) - Pokebola: 200\n'
+          '(2) - Superbola: 500\n'
+          '(3) - Ultrabola: 1000\n'
+          '(4) - Masterbola: 2000\n')
+    escolha = input('Escolha a pokebola que deseja comprar: (enter para sair)')
     if escolha not in '1234':
         print('Escolha inválida')
         gerenciamentoPokebolas()
     if escolha == '':
         return menu()
     
-    
+
     quantidade = int(input('Digite a quantidade: '))
-    if escolha == '1':
-        print(f'Você recebeu {quantidade} pokebolas')
-        time.sleep(2)
-        pokebolas['pokebola'] += quantidade
-    elif escolha == '2':
-        print(f'Você recebeu {quantidade} superbolas')
-        time.sleep(2)
-        pokebolas['superbola'] += quantidade
-    elif escolha == '3':
-        print(f'Você recebeu {quantidade} ultrabolas')
-        time.sleep(2)
-        pokebolas['ultrabola'] += quantidade
-    elif escolha == '4':
-        print(f'Você recebeu {quantidade} masterbolas')
-        time.sleep(2)
-        pokebolas['masterbola'] += quantidade
-    else:
-        print('Escolha inválida')
-        gerenciamentoPokebolas()
-    return menu()
+    if escolha in '1234':
+        if dinheiroJogador < (itensPrice[list(itensPrice.keys())[int(escolha)-1]] * quantidade):
+            print('Você não tem dinheiro suficiente')
+            time.sleep(3)
+            return menu()
+        else:
+            dinheiroJogador -= (itensPrice[list(itensPrice.keys())[int(escolha)-1]] * quantidade)
+            pokebolas[list(pokebolas.keys())[int(escolha)-1]] += quantidade
+            print('Compra realizada com sucesso!')
+            logger('Buying Pokeballs')
+            time.sleep(3)
+            return menu()
+
+def lojaItens():
+    pass
 
 #Menu Principal 
         
