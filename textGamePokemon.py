@@ -496,7 +496,7 @@ def menu():
     
     escolha = input('Escolha a opção: ')
     
-    if escolha == '1':
+    if escolha == '1': #New Game
         logger('Entering New Game')
  
     elif escolha == '2':
