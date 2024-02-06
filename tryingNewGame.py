@@ -59,31 +59,30 @@ def checkInitialPoke(namePlayer):
         return False
 
 def checkAllPlayers():
-    logger('Checking Players in Database')
     cur.execute('SELECT nome FROM players')
     for i in cur.fetchall():
         print(f'Jogador: {i[0]}')
+    input('Pressione enter para continuar...')
+    logger('Checking Players in Database')
     print('\n')
 
 def checkInfoPlayerLocal():
-    logger('Checking Local Player Info')
+    print('\n\n')
     print(f'Nome do jogador atual é: {PlayerName}')
     print(f'Jogador ID: {jogadorId[0]}')
     print(f'Pokemon inicial: {InitialPoke}')
     print(f'Geração escolhida: {geracaoEscolhida}')
-    print(f'Pokemons atuais: {", ".join(pokemonsAtuais)}')
-    print(f'Pokebolas atuais:\nPokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
+    print(checkAllPokemons())
+    print(f'Pokebolas atuais:\n Pokebolas: {pokebolas["pokebola"]}\n Superbolas: {pokebolas["superbola"]}\n Ultrabolas: {pokebolas["ultrabola"]}\n Masterbolas: {pokebolas["masterbola"]}\n')
+    input('Pressione enter para continuar...')
+    logger('Checking Player Info')
 
 def checkAllPokemons():
-    logger('Checking Pokemons in Database')
-    print(f'Checking Pokemons of {infoData[0]} from ID: {jogadorId[0]}\n')
-    #Selecionar ID do jgoador e pesquisar os pokemons na tabela pkoemons_capturados
     try:
         cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
         checkPockemon = cur.fetchall()
-        for i in checkPockemon:
-            print(f'Pokemons: {i[0]}')
-        print('\n')
+        pokemonNames = [i[0] for i in checkPockemon]
+        return print(f'Pokemons capturados: {", ".join(pokemonNames)}')
     except Exception as e:
         print('Erro ao verificar os pokemons', e)
         logger(f'Error checkAllPokemons:{e}')
@@ -178,24 +177,7 @@ def salvarDados():
             conn.commit()
 
 def autoSave():
-    global autoSaveon
-    global infoData, pokemonsAtuais, InitialPoke, geracaoEscolhida
-    if checkPlayerExists(infoData[0]):
-        if checkInitialPoke(infoData[0]):
-            #Salvar os pokemons da tabela pokemon capturados na lista de pokemons atuais
-            cur.execute('SELECT nome_pokemon FROM pokemons_capturados WHERE jogador_id = %s', (jogadorId,))
-            pokemonsAtuais = cur.fetchall()
-            pokemonsAtuais = [i[0] for i in pokemonsAtuais]
-            logger('Saving Data to Database, Player Exists')
-        else:
-            logger('Saving Data to Database, New Player')
-            cur.execute(f"""
-    INSERT INTO pokemons (jogador_id, nome_jogador, pokemon_inicial, geracao, datacriacao)
-    SELECT id, nome, '{InitialPoke}', {geracaoEscolhida}, '{dataAtual}'
-    FROM players
-    WHERE nome = '{infoData[0]}';
-""")
-            conn.commit()
+    salvarDados()
     logger('autosave')
     threading.Timer(30, autoSave).start()
 
@@ -253,7 +235,7 @@ def newGame():
         carregarDados()
         menu()
     else:
-        raise SystemExit
+        newGame()
 
 def criarSave():
     logger('Creating New character')
@@ -342,14 +324,18 @@ def logger(where):
     global infoData
     cur.execute(f"""
     INSERT INTO logsjoin (player_id, nome, locale, date)
-    SELECT id, nome, '{where}','{dataAtual}'
+    SELECT id, nome, '{where}', '{dataAtual}'
     FROM players
     WHERE nome = '{infoData[0]}';
 """)
-    conn.commit()
-    print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
-    time.sleep(0.9)
-    os.system('cls')
+    if where != 'checkPlayerExists' and where != 'autosave' and where != 'checkInitialPoke':
+        conn.commit()
+        print(f'Informações de log {where} foram adicionadas com sucesso ao db!\n')
+        time.sleep(0.9)
+        os.system('cls')
+    else:
+        conn.commit()
+
 
 #Audio Func
 
@@ -367,6 +353,7 @@ def playAudioBackground():
 #Funcoes para a gameplay
 
 def pegarPokemon():
+    os.system('cls')
     try:
         pokemons = requests.get('https://pokeapi.co/api/v2/pokedex/1').json().get('pokemon_entries')
     except Exception as e:
@@ -399,13 +386,16 @@ def pegarPokemon():
         print('Geração inválida')
         time.sleep(3)
 
-    choosePokeball = input(f'Pokebolas Atuais:\n Pokebola: {pokebolas["pokebola"]}\n Superbola: {pokebolas["superbola"]}\n Ultrabola: {pokebolas["ultrabola"]}\n Masterbola: {pokebolas["masterbola"]}\nEscolha a pokebola que deseja escolher: ')
-
+    for i in pokebolas:
+        print(f'{i}: {pokebolas[i]}')
+    choosePokeball = input('Escolha a pokebola que deseja usar: (enter para sair)')
+    os.system('cls')
     if choosePokeball in pokebolas:
         print(f'Você escolheu a pokebola {choosePokeball}')
         if pokebolas[choosePokeball] == 0:
             print('Você não tem pokebolas suficientes')
-            menu()
+            time.sleep(3)
+            return menu()
         else:
             capturar = input(f'Deseja capturar o pokemon {pokemonSorteado["pokemon_species"]["name"]}? (s/n)')
 
@@ -423,21 +413,24 @@ def pegarPokemon():
                 except Exception as e:
                     print('Erro ao capturar o pokemon', e)
                     logger(e)
-                    menu()
+                    return menu()
 
                 print(f'Pokemons Atuais Atualizados: {", ".join(pokemonsAtuais)}')
                 time.sleep(5)
-                menu()
+                return menu()
             else:
                 option = input('Deseja tentar novamente? (s/n)')
                 if option == 's':
                     return pegarPokemon()
                 else:
                     print('Pokemon não capturado')
-                    menu()
-                
+                    logger('Pokemon not captured')
+                    return menu()
+    elif choosePokeball == '':
+        return menu()           
     else:
         print('Escolha inválida')
+        logger('Invalid Choice to choose pokeball')
         return pegarPokemon()
 
     
@@ -445,22 +438,41 @@ def pegarPokemon():
 
 def gerenciamentoPokebolas():
     global pokebolas
+    logger('Getting Pokeballs')
     print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
-    escolha = input('Escolha a pokebola que deseja receber: ')
+    print('  (1) - Pokebola\n'
+          '  (2) - Superbola\n'
+          '  (3) - Ultrabola\n'
+          '  (4) - Masterbola\n')
+    escolha = input('Escolha a pokebola que deseja receber: (enter para sair)')
+    if escolha not in '1234':
+        print('Escolha inválida')
+        gerenciamentoPokebolas()
+    if escolha == '':
+        return menu()
+    
+    
     quantidade = int(input('Digite a quantidade: '))
-    if escolha == 'pokebola':
+    if escolha == '1':
+        print(f'Você recebeu {quantidade} pokebolas')
+        time.sleep(2)
         pokebolas['pokebola'] += quantidade
-    elif escolha == 'superbola':
+    elif escolha == '2':
+        print(f'Você recebeu {quantidade} superbolas')
+        time.sleep(2)
         pokebolas['superbola'] += quantidade
-    elif escolha == 'ultrabola':
+    elif escolha == '3':
+        print(f'Você recebeu {quantidade} ultrabolas')
+        time.sleep(2)
         pokebolas['ultrabola'] += quantidade
-    elif escolha == 'masterbola':
+    elif escolha == '4':
+        print(f'Você recebeu {quantidade} masterbolas')
+        time.sleep(2)
         pokebolas['masterbola'] += quantidade
     else:
         print('Escolha inválida')
         gerenciamentoPokebolas()
-    print(f'Pokebolas: {pokebolas["pokebola"]} Superbolas: {pokebolas["superbola"]} Ultrabolas: {pokebolas["ultrabola"]} Masterbolas: {pokebolas["masterbola"]}')
-    menu()
+    return menu()
 
 #Menu Principal 
         
@@ -468,19 +480,27 @@ def menu():
     global pokemonsAtuais, infoData, pokeInicialEscolhido, dado, InitialPoke_boolean, InitialPoke, PlayerName, autoSaveon, perguntaAutoSave
     salvarDados()
     print(f'Bem-vindo {infoData[0]} ao menu do jogo!')
-    print('Escolha a opção: \n(1) - New Game \n(2) - Ver Pokemons Salvos no Banco de Dados\n(3) - Ver Pokedex \n(4) - Sair \n(5) - Salvar \n(6) - Ver Informações do Jogador \n(7) - Ver Jogadores Salvos no Banco de Dados\n(8) - Escolher outro Personagem\n(9) - Escolher Pokemon Inicial\n')
-    
+    print('Escolha a opção:\n'
+      '  (1) - New Game (nothing yet)\n'
+      '  (2) - Null\n'
+      '  (3) - Ver Pokedex\n'
+      '  (4) - --Insert--\n'
+      '  (5) - Salvar\n'
+      '  (6) - Ver Informações do Jogador\n'
+      '  (7) - Ver Jogadores Salvos no Banco de Dados\n'
+      '  (8) - Escolher outro Personagem\n'
+      '  (9) - Escolher Pokemon Inicial\n'
+      ' (10) - Pegar Pokemon\n'
+      ' (11) - Gerenciamento de Pokebolas\n'
+      ' (12) - Sair\n')
     
     escolha = input('Escolha a opção: ')
-    
     
     if escolha == '1':
         logger('Entering New Game')
  
     elif escolha == '2':
-        logger('Checking Database for Pokemons')
-        checkAllPokemons()
-        menu()
+        pass
         
     elif escolha == '3':
         logger('Checking Pokedex')
@@ -488,14 +508,14 @@ def menu():
         verPokedex = input(f'Digite 1 para ver o numero de pokemons capturados, 2 para ver a pokedex: ')
         if verPokedex == '1':
             print(f'{len(pokemonsAtuais)}/{len(pokedex)} pokemons capturados')
+            input('Pressione enter para continuar...')
         elif verPokedex == '2':
             for pokemon in pokedex:
                 print(pokemon['pokemon_species']['name'])
+            input('Pressione enter para continuar...')
         
     elif escolha == '4':
-        logger('Exiting Game')
-        dbconnect.disconnectdb(conn)
-        raise SystemExit
+        pass
 
     elif escolha == '5':
         if perguntaAutoSave:
@@ -512,7 +532,6 @@ def menu():
     
     elif escolha == '6':
         checkInfoPlayerLocal()
-        time.sleep(5)
         
     
     elif escolha == '7':
@@ -536,6 +555,11 @@ def menu():
         
     elif escolha == '11':
         gerenciamentoPokebolas()
+        
+    elif escolha == '12':
+        logger('Exiting Game')
+        dbconnect.disconnectdb(conn)
+        raise SystemExit
 
 os.system('cls')
 infoData = input('Digite o nome do jogador: ').lower()
